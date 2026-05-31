@@ -81,11 +81,14 @@ public class RetryWorker {
 
         } catch (HttpClientErrorException ex) {
             int statusCode = ex.getStatusCode().value();
+            attemptBuilder.statusCode(statusCode);
             handleTerminalFailure(req, currentAttemptNumber, DeadLetterReason.TERMINAL_4XX, "HTTP " + statusCode + ": " + ex.getMessage(), statusCode, attemptBuilder);
         } catch (HttpServerErrorException ex) {
             int statusCode = ex.getStatusCode().value();
+            attemptBuilder.statusCode(statusCode); // 💡
             handleRetryableFailure(req, currentAttemptNumber, "HTTP " + statusCode + ": " + ex.getMessage(), statusCode, attemptBuilder);
         } catch (ResourceAccessException ex) {
+
             handleRetryableFailure(req, currentAttemptNumber, "Network error: " + ex.getMessage(), null, attemptBuilder);
         }
 
