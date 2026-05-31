@@ -3,6 +3,7 @@ package com.mouse.dilamme.retry.service;
 import com.mouse.dilamme.retry.dto.CreateRetryRequestDto;
 import com.mouse.dilamme.retry.dto.RetryAttemptResponseDto;
 import com.mouse.dilamme.retry.dto.RetryRequestDetailsDto;
+import com.mouse.dilamme.retry.dto.RetryRequestSummaryDto;
 import com.mouse.dilamme.retry.enums.DeadLetterReason;
 import com.mouse.dilamme.retry.enums.RequestStatus;
 import com.mouse.dilamme.retry.model.DeadLetterEntry;
@@ -57,7 +58,7 @@ public class RequestService {
     @Transactional(readOnly = true)
     public Optional<RetryRequestDetailsDto> findById(UUID id) {
         return requestRepo.findById(id).map(req -> {
-            // Map child attempts into flat attempt DTOs
+
             List<RetryAttemptResponseDto> attemptDtos = attemptRepo.findByRequestIdOrderByAttemptNumberAsc(id)
                     .stream()
                     .map(attempt -> RetryAttemptResponseDto.builder()
@@ -71,8 +72,7 @@ public class RequestService {
                             .build())
                     .toList();
 
-            // Map parent request along with its inner collection
-            return RetryRequestDetailsDto.builder()
+            RetryRequestDetailsDto.RequestSummary summary = RetryRequestDetailsDto.RequestSummary.builder()
                     .id(req.getId())
                     .url(req.getUrl())
                     .method(req.getMethod())
@@ -84,6 +84,10 @@ public class RequestService {
                     .result(req.getResult())
                     .lastError(req.getLastError())
                     .nextRetryAt(req.getNextRetryAt())
+                    .build();
+
+            return RetryRequestDetailsDto.builder()
+                    .request(summary)
                     .attempts(attemptDtos)
                     .build();
         });
@@ -93,8 +97,17 @@ public class RequestService {
      * Filter requests by status enum value.
      */
     @Transactional(readOnly = true)
-    public List<RetryRequest> findByStatus(RequestStatus status) {
-        return requestRepo.findByStatus(status);
+    public List<RetryRequestSummaryDto> findByStatus(RequestStatus status) {
+        return requestRepo.findByStatus(status).stream()
+                .map(req -> RetryRequestSummaryDto.builder()
+                        .id(req.getId())
+                        .url(req.getUrl())
+                        .method(req.getMethod())
+                        .attemptCount(req.getAttemptCount())
+                        .status(req.getStatus())
+                        .lastError(req.getLastError())
+                        .build())
+                .toList();
     }
 
     /** All dead-letter entries, newest first. */
