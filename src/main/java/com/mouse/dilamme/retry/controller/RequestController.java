@@ -1,6 +1,7 @@
 package com.mouse.dilamme.retry.controller;
 
 import com.mouse.dilamme.retry.dto.CreateRetryRequestDto;
+import com.mouse.dilamme.retry.dto.RetryRequestDetailsDto;
 import com.mouse.dilamme.retry.enums.DeadLetterReason;
 import com.mouse.dilamme.retry.enums.RequestStatus;
 import com.mouse.dilamme.retry.model.RetryRequest;
@@ -45,7 +46,7 @@ public class RequestController {
      * GET /requests/:id — returns the request + full attempt history.
      */
     @GetMapping("/requests/{id}")
-    public ResponseEntity<?> getById(@PathVariable UUID id) {
+    public ResponseEntity<RetryRequestDetailsDto> getById(@PathVariable UUID id) {
         return requestService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
