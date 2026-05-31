@@ -1,6 +1,8 @@
 package com.mouse.dilamme.retry.service;
 
 import com.mouse.dilamme.retry.dto.CreateRetryRequestDto;
+import com.mouse.dilamme.retry.dto.RetryAttemptResponseDto;
+import com.mouse.dilamme.retry.dto.RetryRequestDetailsDto;
 import com.mouse.dilamme.retry.enums.DeadLetterReason;
 import com.mouse.dilamme.retry.enums.RequestStatus;
 import com.mouse.dilamme.retry.model.DeadLetterEntry;
@@ -53,10 +55,37 @@ public class RequestService {
      * Return request + its full attempt history.
      */
     @Transactional(readOnly = true)
-    public Optional<Map<String, Object>> findById(UUID id) {
+    public Optional<RetryRequestDetailsDto> findById(UUID id) {
         return requestRepo.findById(id).map(req -> {
-            List<RetryAttempt> attempts = attemptRepo.findByRequestIdOrderByAttemptNumberAsc(id);
-            return Map.of("request", req, "attempts", attempts);
+            // Map child attempts into flat attempt DTOs
+            List<RetryAttemptResponseDto> attemptDtos = attemptRepo.findByRequestIdOrderByAttemptNumberAsc(id)
+                    .stream()
+                    .map(attempt -> RetryAttemptResponseDto.builder()
+                            .id(attempt.getId())
+                            .attemptNumber(attempt.getAttemptNumber())
+                            .attemptedAt(attempt.getAttemptedAt())
+                            .statusCode(attempt.getStatusCode())
+                            .outcome(attempt.getOutcome())
+                            .errorMessage(attempt.getErrorMessage())
+                            .waitedMs(attempt.getWaitedMs())
+                            .build())
+                    .toList();
+
+            // Map parent request along with its inner collection
+            return RetryRequestDetailsDto.builder()
+                    .id(req.getId())
+                    .url(req.getUrl())
+                    .method(req.getMethod())
+                    .body(req.getBody())
+                    .status(req.getStatus())
+                    .attemptCount(req.getAttemptCount())
+                    .maxRetries(req.getMaxRetries())
+                    .backoffMs(req.getBackoffMs())
+                    .result(req.getResult())
+                    .lastError(req.getLastError())
+                    .nextRetryAt(req.getNextRetryAt())
+                    .attempts(attemptDtos)
+                    .build();
         });
     }
 
