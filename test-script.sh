@@ -195,7 +195,7 @@ FAILED=$(curl -s "$BASE/requests?status=FAILED")
 COUNT=$(echo "$FAILED" | jq 'length')
 ok "Found $COUNT failed request(s)"
 
-# Added a null-safe fallback (// "") to ensure jq doesn't crash on empty lastError fields
+# Evaluates the slice safely against any empty error strings
 echo "$FAILED" | jq '[.[] | {id: .id, url: .url, attemptCount: .attemptCount, lastError: ((.lastError // "")[0:80])}]'
 
 echo ""
