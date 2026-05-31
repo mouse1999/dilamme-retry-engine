@@ -191,11 +191,12 @@ banner "Scenario 4 — GET /requests?status=FAILED"
 info "List all failed requests (should include scenarios 2 and 3)."
 echo ""
 
-# Query parameter updated to uppercase to match the system enum validation safely
 FAILED=$(curl -s "$BASE/requests?status=FAILED")
 COUNT=$(echo "$FAILED" | jq 'length')
 ok "Found $COUNT failed request(s)"
-echo "$FAILED" | jq '[.[] | {id: .id, url: .url, attemptCount: .attemptCount, lastError: .lastError[0:80]}]'
+
+# Added a null-safe fallback (// "") to ensure jq doesn't crash on empty lastError fields
+echo "$FAILED" | jq '[.[] | {id: .id, url: .url, attemptCount: .attemptCount, lastError: ((.lastError // "")[0:80])}]'
 
 echo ""
 banner "Done"
