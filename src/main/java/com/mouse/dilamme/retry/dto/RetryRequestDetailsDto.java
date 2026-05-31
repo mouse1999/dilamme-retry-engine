@@ -11,16 +11,23 @@ import java.util.UUID;
 @Getter
 @Builder
 public class RetryRequestDetailsDto {
-    private UUID id;
-    private String url;
-    private String method;
-    private String body;
-    private RequestStatus status;
-    private int attemptCount;
-    private int maxRetries;
-    private long backoffMs;
-    private String result;
-    private String lastError;
-    private Instant nextRetryAt;
+
+    private RequestSummary request;
     private List<RetryAttemptResponseDto> attempts;
+
+    @Getter
+    @Builder
+    public static class RequestSummary {
+        private UUID id;
+        private String url;
+        private String method;
+        private String body;
+        private RequestStatus status;
+        private int attemptCount;
+        private int maxRetries;
+        private long backoffMs;
+        private String result;
+        private String lastError;
+        private Instant nextRetryAt;
+    }
 }
