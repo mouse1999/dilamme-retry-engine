@@ -1,0 +1,84 @@
+@startuml
+' --- Configuration Styles ---
+skinparam backgroundcolor transparent
+skinparam boxPadding 10
+skinparam componentStyle rectangle
+
+skinparam node {
+    BackgroundColor #F5F6FA
+    BorderColor #2F3640
+    FontColor #2F3640
+    FontName Arial
+    FontSize 14
+}
+
+skinparam rectangle {
+    BackgroundColor #E1F5FE
+    BorderColor #0288D1
+    FontColor #01579B
+    FontName Arial
+}
+
+skinparam database {
+    BackgroundColor #E8F5E9
+    BorderColor #388E3C
+    FontColor #1B5E20
+    FontName Arial
+}
+
+skinparam cloud {
+    BackgroundColor #FFF3E0
+    BorderColor #F57C00
+    FontColor #E65100
+    FontName Arial
+}
+
+' --- Elements Hierarchy ---
+
+node "Single JVM (Spring Boot Application)" as JVM {
+
+    rectangle Ctrl [
+        <b>RequestController</b> (REST API)
+        ----
+        POST /request
+        GET /requests
+        GET /dead-letter
+    ]
+
+    database "SQLite Storage\n(WAL Mode)" as DB {
+        [requests table]
+        [attempts table]
+        [dead_letter table]
+    }
+
+    rectangle Worker [
+        <b>RetryWorker</b> (Background Service)
+        ----
+        @Scheduled(fixedDelay = 500)
+    ]
+
+    note bottom of Worker
+        <b>Execution per due row:</b>
+        1. Fire HTTP downstream call
+        2. Record current retry attempt
+        3a. 2xx status ➔ COMPLETED
+        3b. 4xx status ➔ FAILED (Terminal)
+        3c. 5xx/Timeout ➔ Calculate backoff & retry
+        3d. maxRetries hit ➔ Move to dead_letter
+    end note
+}
+
+cloud ExtService [
+    <b>External Downstream Services</b>
+    ----
+    (Payment Gateways, SMS Providers, etc.)
+]
+
+' --- Relationships / Pipelines ---
+
+Ctrl -down-> DB : " Persists request intent\n & state initialization"
+DB -down-> Worker : " findDueRequests()\n [nextRetryAt <= now() && status ∈ (PENDING, RETRYING)]"
+Worker -right-> DB : " Saves finalized attempts\n & drops terminal tasks"
+Worker -down-> ExtService : " Outbound HTTP Call\n (via RestTemplate)"
+
+@enduml

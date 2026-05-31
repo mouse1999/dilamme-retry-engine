@@ -1,0 +1,99 @@
+@startuml
+' --- Configuration Styles ---
+skinparam backgroundcolor transparent
+skinparam boxPadding 10
+skinparam ParticipantPadding 15
+skinparam SequenceGroupBodyBackgroundColor transparent
+
+skinparam actor {
+    BackgroundColor #F5F6FA
+    BorderColor #2F3640
+}
+
+skinparam participant {
+    BackgroundColor #E1F5FE
+    BorderColor #0288D1
+    FontColor #01579B
+}
+
+skinparam database {
+    BackgroundColor #E8F5E9
+    BorderColor #388E3C
+    FontColor #1B5E20
+}
+
+skinparam collections {
+    BackgroundColor #FFF3E0
+    BorderColor #F57C00
+    FontColor #E65100
+}
+
+' --- Actors & Components ---
+actor "API Client\n(Caller)" as Client
+participant "RequestController" as Ctrl
+database "SQLite Database" as DB
+participant "RetryWorker" as Worker
+collections "External Service" as Ext
+
+' --- Phase 1: Ingress & Immediate Unblocking ---
+== Phase 1: Ingress & Immediate Unblocking ==
+
+Client -> Ctrl : POST /request (Payload Intent)
+activate Ctrl
+
+Ctrl -> DB : save(RetryRequest)\n[status=PENDING, nextRetryAt=now()]
+activate DB
+DB --> Ctrl : saved
+deactivate DB
+
+Ctrl --> Client : HTTP 202 Accepted\n{ id, status: "PENDING" }
+note right of Client: 💡 Client is now unblocked
+deactivate Ctrl
+
+' --- Phase 2: Polling & Outbound Processing Loop ---
+== Phase 2: Polling & Outbound Processing Loop ==
+
+loop Every 500ms (@Scheduled)
+    Worker -> DB : findDueRequests(now)\n[nextRetryAt <= now() && status ∈ (PENDING, RETRYING)]
+    activate DB
+    DB --> Worker : List<RetryRequest> (due rows)
+    deactivate DB
+
+    alt No due rows found
+        note over Worker: Sleep until next 500ms cycle tick
+    else Due rows found
+        loop for each due request
+            Worker -> Worker : Increment attemptCount
+            Worker -> Worker : Build RetryAttempt entity
+
+            Worker -> Ext : Outbound HTTP Call (via RestTemplate)
+            activate Ext
+
+            alt 2xx Success Outcome
+                Ext --> Worker : HTTP 2xx (Success Body)
+                Worker -> DB : updateRequestStatus(id, COMPLETED)
+
+            else 4xx Terminal Failure Boundary
+                Ext --> Worker : HTTP 4xx (Client Error)
+                Worker -> DB : updateRequestStatus(id, FAILED)
+                Worker -> DB : saveToDeadLetter(id, TERMINAL_4XX)
+
+            else 5xx Server Error / Network Timeout
+                Ext --> Worker : HTTP 5xx / Socket Exception Drop
+                deactivate Ext
+
+                alt attemptCount < maxRetries
+                    Worker -> Worker : Compute Backoff Wait:\nbackoffMs × 2^(n-1) × jitter
+                    Worker -> DB : updateRequest(status=RETRYING, nextRetryAt=now+wait)
+                else attemptCount >= maxRetries
+                    Worker -> DB : updateRequestStatus(id, FAILED)
+                    Worker -> DB : saveToDeadLetter(id, MAX_RETRIES_EXCEEDED)
+                end
+            end
+
+            Worker -> DB : save(RetryAttempt) -> attempts table
+        end
+    end
+end
+
+@enduml
